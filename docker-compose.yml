@@ -8,6 +8,9 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
 
   kafka1:
     image: confluentinc/cp-server:7.6.2
@@ -28,8 +31,11 @@ services:
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
       KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: 'true'
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "true"
     depends_on:
       - zookeeper    
+    # volumes:
+    #   - kafka1_data:/var/lib/kafka/data
 
   kafka2:
     image: confluentinc/cp-server:7.6.2
@@ -50,9 +56,12 @@ services:
       KAFKA_JMX_PORT: 9102
       KAFKA_JMX_HOSTNAME: localhost
       KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: 'true'
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "true"
     depends_on:
       - zookeeper
       - kafka1
+    # volumes:
+    #   - kafka2_data:/var/lib/kafka/data
 
   kafka3:
     image: confluentinc/cp-server:7.6.2
@@ -73,10 +82,13 @@ services:
       KAFKA_JMX_PORT: 9103
       KAFKA_JMX_HOSTNAME: localhost
       KAFKA_CONFLUENT_SUPPORT_METRICS_ENABLE: 'true'
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "true"
     depends_on:
       - zookeeper
       - kafka1
       - kafka2
+    # volumes:
+    #   - kafka3_data:/var/lib/kafka/data
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -111,4 +123,10 @@ services:
 networks:
   default:
     name: kafka-cluster
-    
+
+# volumes:
+#   zookeeper_data:
+#   zookeeper_log:
+#   kafka1_data:
+#   kafka2_data:
+#   kafka3_data:
