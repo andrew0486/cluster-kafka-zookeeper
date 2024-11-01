@@ -1,0 +1,149 @@
+Para desplegar un clúster de Kafka con tres nodos de Kafka distribuidos en diferentes hosts y utilizando un solo nodo de Zookeeper, puedes usar Docker Swarm y redes de tipo overlay para que los contenedores se comuniquen entre sí a través de múltiples hosts.
+
+Escenario:
+Zookeeper: Un solo nodo que actúa como el servicio de coordinación para Kafka.
+Kafka: Tres nodos distribuidos en diferentes hosts.
+Docker Swarm: Se utilizará para orquestar el despliegue en múltiples hosts.
+Docker Compose: Definirá la configuración de los servicios.
+Pasos para la configuración:
+1. Iniciar Docker Swarm
+En el host principal (que actuará como manager), inicia Docker Swarm:
+
+bash
+Copiar código
+docker swarm init --advertise-addr <IP_host_manager>
+Esto te dará un comando con un token de join. En cada host secundario, únete al Swarm con ese token:
+
+bash
+Copiar código
+docker swarm join --token <TOKEN> <IP_host_manager>:2377
+Ahora, todos los hosts están unidos en un clúster de Swarm.
+
+2. Crear una red overlay
+En el host líder (manager), crea una red overlay para que los contenedores Kafka y Zookeeper puedan comunicarse a través de los hosts:
+
+bash
+Copiar código
+docker network create --driver overlay kafka_net
+
+3. Crear el archivo docker-compose.yml
+Vamos a crear el archivo docker-compose.yml que configurará el despliegue de Zookeeper y tres nodos de Kafka.
+
+docker-compose.yml:
+yaml
+Copiar código
+version: '3.8'
+
+services:
+  zookeeper:
+    image: zookeeper:3.6
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zookeeper:2888:3888
+    networks:
+      - kafka_net
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == <host1>
+
+  kafka1:
+    image: wurstmeister/kafka:latest
+    hostname: kafka1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - kafka_net
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == <host2>
+
+  kafka2:
+    image: wurstmeister/kafka:latest
+    hostname: kafka2
+    ports:
+      - "9093:9092"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - kafka_net
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == <host3>
+
+  kafka3:
+    image: wurstmeister/kafka:latest
+    hostname: kafka3
+    ports:
+      - "9094:9092"
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9094
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - kafka_net
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == <host4>
+
+networks:
+  kafka_net:
+    external: true
+
+Explicación de la configuración:
+Zookeeper: El servicio Zookeeper se ejecuta en un solo nodo (definido en <host1>), actuando como el coordinador de los nodos Kafka.
+Kafka1, Kafka2, Kafka3: Tres nodos Kafka que se ejecutan en tres hosts diferentes (<host2>, <host3>, <host4>). Cada nodo tiene su propio ID de broker (KAFKA_BROKER_ID) y se conecta al único nodo Zookeeper usando KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181.
+Puertos: Cada nodo Kafka escucha en un puerto diferente en el host para evitar conflictos:
+kafka1: puerto 9092
+kafka2: puerto 9093
+kafka3: puerto 9094
+Red overlay: Todos los servicios están conectados a la red kafka_net, que es de tipo overlay y permite que los contenedores se comuniquen entre hosts.
+Placement Constraints: Define en qué host (nodo del Swarm) debe ejecutarse cada servicio. Por ejemplo, zookeeper se ejecuta en <host1>, kafka1 en <host2>, y así sucesivamente.
+4. Desplegar el clúster con Docker Swarm
+Asegúrate de que la red kafka_net exista en todos los nodos del clúster:
+
+bash
+Copiar código
+docker network create --driver overlay kafka_net
+
+docker network ls --filter name=kafka_net --format "{{.Name}}"
+Luego, despliega los servicios usando Docker Stack:
+
+bash
+Copiar código
+docker stack deploy -c docker-compose.yml CLUSTER-TEMIS
+Docker Swarm se encargará de distribuir los contenedores en los hosts especificados, respetando las restricciones de placement.
+
+5. Verificar que el clúster esté funcionando
+Para verificar que los nodos Kafka están corriendo correctamente y se pueden comunicar:
+
+Conéctate a uno de los nodos Kafka y prueba con el comando kafka-topics.sh para listar los tópicos:
+bash
+Copiar código
+docker exec -it <container_id_of_kafka1> kafka-topics.sh --list --zookeeper zookeeper:2181
+Si todo está bien, deberías ver que los nodos Kafka están operando y conectados al nodo Zookeeper.
+
+Resumen:
+Iniciar Docker Swarm en los hosts y unirlos en un clúster.
+Crear una red overlay para conectar los contenedores a través de múltiples hosts.
+Configurar Docker Compose para desplegar Zookeeper y Kafka en diferentes hosts, utilizando restricciones de placement.
+Desplegar con Docker Stack usando docker stack deploy.
+Este enfoque te permite gestionar un clúster Kafka distribuido en diferentes hosts, aprovechando la orquestación y red overlay de Docker Swarm.
